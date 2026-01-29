@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel | Revent Signature Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .login-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 380px;
+            text-align: center;
+        }
+        .login-card h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .login-card .subtitle {
+            margin-bottom: 2rem;
+        }
+        .login-error {
+            background: #fef2f2;
+            color: #dc2626;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+        .login-error.show {
+            display: block;
+        }
+        .admin-content {
+            display: none;
+        }
+        .admin-content.show {
+            display: block;
+        }
+        /* Crop Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 450px;
+            max-height: 90vh;
+            overflow: hidden;
+            transform: scale(0.9);
+            transition: transform 0.3s;
+        }
+        .modal-overlay.show .modal {
+            transform: scale(1);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .modal-header h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        .modal-body {
+            padding: 1.5rem;
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            padding: 1.25rem 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+        .crop-container {
+            position: relative;
+            width: 100%;
+            height: 280px;
+            background: #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: move;
+        }
+        .crop-container img {
+            position: absolute;
+            max-width: none;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        .crop-square {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 150px;
+            height: 150px;
+            border-radius: 8px;
+            border: 3px solid white;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+        .crop-controls {
+            margin-top: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .crop-controls label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+        .crop-controls input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            background: var(--border-color);
+            border-radius: 3px;
+            outline: none;
+        }
+        .crop-controls input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(90deg, #11c5ce, #e40eeb);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div class="login-container" id="login-screen">
+        <div class="login-card">
+            <h1>Admin Access</h1>
+            <p class="subtitle">Enter password to continue</p>
+
+            <div class="login-error" id="login-error">Incorrect password. Please try again.</div>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <input type="password" id="admin-password" placeholder="Enter password" autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Access Admin Panel</button>
+            </form>
+
+            <a href="index.html" class="back-link" style="display:inline-block;margin-top:1.5rem;">Back to Generator</a>
+        </div>
+    </div>
+
+    <!-- Admin Content (hidden until authenticated) -->
+    <div class="container admin-content" id="admin-content">
+        <header class="admin-header">
+            <div>
+                <a href="index.html" class="back-link">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    Back to Generator
+                </a>
+                <h1 style="margin-top:1rem;">Admin Panel</h1>
+                <p class="subtitle">Manage global settings for all signatures</p>
+            </div>
+            <button class="btn btn-secondary" id="logout-btn">Logout</button>
+        </header>
+
+        <div style="background:#dbeafe;padding:1rem;border-radius:8px;margin-bottom:2rem;color:#1e40af;font-size:0.875rem;">
+            <strong>Note:</strong> All settings configured here apply globally to every signature generated by employees.
+        </div>
+
+        <main class="admin-grid">
+            <!-- Awards/Seals Section -->
+            <section class="admin-card">
+                <h2>Awards & Seals</h2>
+                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;">
+                    Upload award badges or seals. Each will be cropped to a consistent square size.
+                </p>
+
+                <div class="upload-area" id="awards-upload">
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M12 15V3m0 0l-4 4m4-4l4 4"/>
+                        <path d="M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17"/>
+                    </svg>
+                    <p class="upload-text"><span>Click to upload</span> or drag and drop</p>
+                    <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.5rem;">PNG, JPG, SVG (max 500KB)</p>
+                    <input type="file" id="awards-input" accept="image/*" hidden>
+                </div>
+
+                <div class="awards-list" id="awards-list"></div>
+            </section>
+
+            <!-- Company Tagline Section -->
+            <section class="admin-card">
+                <h2>Company Tagline</h2>
+                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;">
+                    Optional tagline displayed in all signatures.
+                </p>
+
+                <div class="form-group">
+                    <label for="tagline">Tagline Text</label>
+                    <input type="text" id="tagline" placeholder="e.g., Building the future of fintech">
+                </div>
+
+                <button class="btn btn-primary" id="save-tagline" style="margin-top:1rem;">Save Tagline</button>
+            </section>
+
+            <!-- Settings Preview -->
+            <section class="admin-card">
+                <h2>Current Global Settings</h2>
+                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;">
+                    These settings are applied to all employee signatures.
+                </p>
+
+                <div id="settings-preview" style="background:var(--bg-color);border-radius:8px;padding:1rem;font-size:0.875rem;">
+                    <p><strong>Awards:</strong> <span id="awards-count">0</span> uploaded</p>
+                    <p><strong>Tagline:</strong> <span id="tagline-preview">Not set</span></p>
+                </div>
+
+                <button class="btn btn-secondary" id="clear-settings" style="margin-top:1rem;">Clear All Settings</button>
+            </section>
+
+            <!-- Help Section -->
+            <section class="admin-card">
+                <h2>How It Works</h2>
+                <div style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;">
+                    <p><strong>Awards & Seals</strong><br>Each image is cropped to a square for consistent display. Position and zoom to capture the important part.</p>
+                    <br>
+                    <p><strong>Tagline</strong><br>Appears at the bottom of every signature in italics.</p>
+                    <br>
+                    <p><strong>Storage</strong><br>Settings are stored in browser localStorage. For production, integrate with your backend.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Award Crop Modal -->
+    <div class="modal-overlay" id="crop-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Crop Award/Seal</h3>
+                <button class="modal-close" id="crop-cancel-x">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="crop-container" id="crop-container">
+                    <img id="crop-image" src="" alt="Crop preview">
+                    <div class="crop-square"></div>
+                </div>
+                <div class="crop-controls">
+                    <label>Zoom</label>
+                    <input type="range" id="crop-zoom" min="1" max="3" step="0.1" value="1">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="crop-cancel">Cancel</button>
+                <button class="btn btn-primary" id="crop-save">Save Award</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">Changes saved!</div>
+
+    <script>
+        const ADMIN_PASSWORD = 'Revent123';
+        const SESSION_KEY = 'revent-admin-session';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginScreen = document.getElementById('login-screen');
+            const adminContent = document.getElementById('admin-content');
+            const loginForm = document.getElementById('login-form');
+            const loginError = document.getElementById('login-error');
+            const passwordInput = document.getElementById('admin-password');
+            const logoutBtn = document.getElementById('logout-btn');
+
+            const checkAuth = () => {
+                const session = sessionStorage.getItem(SESSION_KEY);
+                if (session === 'authenticated') {
+                    showAdmin();
+                }
+            };
+
+            const showAdmin = () => {
+                loginScreen.style.display = 'none';
+                adminContent.classList.add('show');
+                initAdmin();
+            };
+
+            const showLogin = () => {
+                sessionStorage.removeItem(SESSION_KEY);
+                loginScreen.style.display = 'flex';
+                adminContent.classList.remove('show');
+                passwordInput.value = '';
+                loginError.classList.remove('show');
+            };
+
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (passwordInput.value === ADMIN_PASSWORD) {
+                    sessionStorage.setItem(SESSION_KEY, 'authenticated');
+                    showAdmin();
+                } else {
+                    loginError.classList.add('show');
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+            });
+
+            logoutBtn.addEventListener('click', showLogin);
+            checkAuth();
+
+            // ==================== ADMIN FUNCTIONALITY ====================
+            function initAdmin() {
+                const awardsUpload = document.getElementById('awards-upload');
+                const awardsInput = document.getElementById('awards-input');
+                const awardsList = document.getElementById('awards-list');
+                const taglineInput = document.getElementById('tagline');
+                const saveTaglineBtn = document.getElementById('save-tagline');
+                const clearSettingsBtn = document.getElementById('clear-settings');
+                const toast = document.getElementById('toast');
+                const awardsCount = document.getElementById('awards-count');
+                const taglinePreview = document.getElementById('tagline-preview');
+
+                // Crop modal elements
+                const cropModal = document.getElementById('crop-modal');
+                const cropImage = document.getElementById('crop-image');
+                const cropContainer = document.getElementById('crop-container');
+                const cropZoom = document.getElementById('crop-zoom');
+                const cropSaveBtn = document.getElementById('crop-save');
+                const cropCancelBtn = document.getElementById('crop-cancel');
+                const cropCancelX = document.getElementById('crop-cancel-x');
+
+                // Crop state
+                let cropState = {
+                    x: 0, y: 0, zoom: 1, isDragging: false,
+                    startX: 0, startY: 0, imgWidth: 0, imgHeight: 0
+                };
+
+                const loadSettings = () => {
+                    const settings = localStorage.getItem('revent-signature-admin');
+                    return settings ? JSON.parse(settings) : { awards: [], companyTagline: '' };
+                };
+
+                const saveSettings = (settings) => {
+                    localStorage.setItem('revent-signature-admin', JSON.stringify(settings));
+                    updatePreview();
+                    showToast('Changes saved!');
+                };
+
+                const showToast = (message) => {
+                    toast.textContent = message;
+                    toast.classList.add('show');
+                    setTimeout(() => toast.classList.remove('show'), 3000);
+                };
+
+                const updatePreview = () => {
+                    const settings = loadSettings();
+                    awardsCount.textContent = settings.awards.length;
+                    taglinePreview.textContent = settings.companyTagline || 'Not set';
+                    renderAwards();
+                };
+
+                const renderAwards = () => {
+                    const settings = loadSettings();
+                    awardsList.innerHTML = settings.awards.map((award, index) => `
+                        <div class="award-item">
+                            <img src="${award}" alt="Award ${index + 1}">
+                            <button class="award-remove" data-index="${index}">&times;</button>
+                        </div>
+                    `).join('');
+
+                    awardsList.querySelectorAll('.award-remove').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const index = parseInt(e.target.dataset.index);
+                            const settings = loadSettings();
+                            settings.awards.splice(index, 1);
+                            saveSettings(settings);
+                        });
+                    });
+                };
+
+                // ==================== AWARD CROPPING ====================
+                const openCropModal = (imageSrc) => {
+                    cropImage.src = imageSrc;
+                    cropModal.classList.add('show');
+                    cropZoom.value = 1;
+                    cropImage.onload = () => initCropper();
+                };
+
+                const initCropper = () => {
+                    const containerRect = cropContainer.getBoundingClientRect();
+                    const squareSize = 150;
+                    const imgRatio = cropImage.naturalWidth / cropImage.naturalHeight;
+                    let newWidth, newHeight;
+
+                    if (imgRatio > 1) {
+                        newHeight = squareSize;
+                        newWidth = squareSize * imgRatio;
+                    } else {
+                        newWidth = squareSize;
+                        newHeight = squareSize / imgRatio;
+                    }
+
+                    cropState.imgWidth = newWidth;
+                    cropState.imgHeight = newHeight;
+                    cropState.zoom = 1;
+                    cropState.x = (containerRect.width - newWidth) / 2;
+                    cropState.y = (containerRect.height - newHeight) / 2;
+                    updateCropImage();
+                };
+
+                const updateCropImage = () => {
+                    const width = cropState.imgWidth * cropState.zoom;
+                    const height = cropState.imgHeight * cropState.zoom;
+                    cropImage.style.width = `${width}px`;
+                    cropImage.style.height = `${height}px`;
+                    cropImage.style.left = `${cropState.x}px`;
+                    cropImage.style.top = `${cropState.y}px`;
+                };
+
+                cropZoom.addEventListener('input', (e) => {
+                    const oldZoom = cropState.zoom;
+                    const newZoom = parseFloat(e.target.value);
+                    const oldWidth = cropState.imgWidth * oldZoom;
+                    const oldHeight = cropState.imgHeight * oldZoom;
+                    const newWidth = cropState.imgWidth * newZoom;
+                    const newHeight = cropState.imgHeight * newZoom;
+
+                    cropState.x = cropState.x - (newWidth - oldWidth) / 2;
+                    cropState.y = cropState.y - (newHeight - oldHeight) / 2;
+                    cropState.zoom = newZoom;
+                    updateCropImage();
+                });
+
+                // Drag functionality
+                cropContainer.addEventListener('mousedown', startDrag);
+                cropContainer.addEventListener('touchstart', startDrag, { passive: false });
+
+                function startDrag(e) {
+                    e.preventDefault();
+                    cropState.isDragging = true;
+                    const pos = getEventPos(e);
+                    cropState.startX = pos.x - cropState.x;
+                    cropState.startY = pos.y - cropState.y;
+                }
+
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('touchmove', drag, { passive: false });
+
+                function drag(e) {
+                    if (!cropState.isDragging) return;
+                    e.preventDefault();
+                    const pos = getEventPos(e);
+                    cropState.x = pos.x - cropState.startX;
+                    cropState.y = pos.y - cropState.startY;
+                    updateCropImage();
+                }
+
+                document.addEventListener('mouseup', () => cropState.isDragging = false);
+                document.addEventListener('touchend', () => cropState.isDragging = false);
+
+                function getEventPos(e) {
+                    const rect = cropContainer.getBoundingClientRect();
+                    if (e.touches && e.touches.length > 0) {
+                        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+                    }
+                    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                }
+
+                // Save cropped award
+                cropSaveBtn.addEventListener('click', () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const outputSize = 150;
+
+                    canvas.width = outputSize;
+                    canvas.height = outputSize;
+
+                    const containerRect = cropContainer.getBoundingClientRect();
+                    const squareSize = 150;
+                    const centerX = containerRect.width / 2;
+                    const centerY = containerRect.height / 2;
+
+                    const srcX = (centerX - squareSize / 2 - cropState.x) / cropState.zoom * (cropImage.naturalWidth / cropState.imgWidth);
+                    const srcY = (centerY - squareSize / 2 - cropState.y) / cropState.zoom * (cropImage.naturalHeight / cropState.imgHeight);
+                    const srcSize = (squareSize / cropState.zoom) * (cropImage.naturalWidth / cropState.imgWidth);
+
+                    ctx.drawImage(cropImage, srcX, srcY, srcSize, srcSize, 0, 0, outputSize, outputSize);
+
+                    const croppedData = canvas.toDataURL('image/png');
+                    const settings = loadSettings();
+                    settings.awards.push(croppedData);
+                    saveSettings(settings);
+
+                    closeCropModal();
+                });
+
+                const closeCropModal = () => {
+                    cropModal.classList.remove('show');
+                    awardsInput.value = '';
+                };
+
+                cropCancelBtn.addEventListener('click', closeCropModal);
+                cropCancelX.addEventListener('click', closeCropModal);
+                cropModal.addEventListener('click', (e) => {
+                    if (e.target === cropModal) closeCropModal();
+                });
+
+                // Handle file upload - opens crop modal
+                const handleFile = (file) => {
+                    if (file.size > 500 * 1024) {
+                        showToast('File too large (max 500KB)');
+                        return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = (e) => openCropModal(e.target.result);
+                    reader.readAsDataURL(file);
+                };
+
+                awardsUpload.addEventListener('click', () => awardsInput.click());
+
+                awardsUpload.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    awardsUpload.classList.add('dragover');
+                });
+
+                awardsUpload.addEventListener('dragleave', () => awardsUpload.classList.remove('dragover'));
+
+                awardsUpload.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    awardsUpload.classList.remove('dragover');
+                    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+                });
+
+                awardsInput.addEventListener('change', (e) => {
+                    if (e.target.files[0]) handleFile(e.target.files[0]);
+                });
+
+                // Save tagline
+                saveTaglineBtn.addEventListener('click', () => {
+                    const settings = loadSettings();
+                    settings.companyTagline = taglineInput.value;
+                    saveSettings(settings);
+                });
+
+                // Clear all settings
+                clearSettingsBtn.addEventListener('click', () => {
+                    if (confirm('Clear all global settings?')) {
+                        localStorage.removeItem('revent-signature-admin');
+                        taglineInput.value = '';
+                        updatePreview();
+                        showToast('All settings cleared');
+                    }
+                });
+
+                // Initial load
+                const settings = loadSettings();
+                taglineInput.value = settings.companyTagline || '';
+                updatePreview();
+            }
+        });
+    </script>
+</body>
+</html>
