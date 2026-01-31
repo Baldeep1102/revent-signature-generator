@@ -230,6 +230,21 @@
                 <div class="awards-list" id="awards-list"></div>
             </section>
 
+            <!-- Logo URL Section -->
+            <section class="admin-card">
+                <h2>Company Logo</h2>
+                <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;">
+                    Enter a URL to your hosted logo image (PNG recommended). Leave empty for text fallback.
+                </p>
+
+                <div class="form-group">
+                    <label for="logo-url">Logo URL</label>
+                    <input type="url" id="logo-url" placeholder="https://example.com/logo.png">
+                </div>
+
+                <button class="btn btn-primary" id="save-logo" style="margin-top:1rem;">Save Logo URL</button>
+            </section>
+
             <!-- Company Tagline Section -->
             <section class="admin-card">
                 <h2>Company Tagline</h2>
@@ -268,7 +283,7 @@
                     <br>
                     <p><strong>Tagline</strong><br>Appears at the bottom of every signature in italics.</p>
                     <br>
-                    <p><strong>Storage</strong><br>Settings are stored in browser localStorage. For production, integrate with your backend.</p>
+                    <p><strong>Storage</strong><br>Settings are stored in a cloud database and shared across all users.</p>
                 </div>
             </section>
         </main>
@@ -301,8 +316,8 @@
     <div id="toast" class="toast">Changes saved!</div>
 
     <script>
-        const ADMIN_PASSWORD = 'Revent123';
         const SESSION_KEY = 'revent-admin-session';
+        const PASSWORD_KEY = 'revent-admin-password';
 
         document.addEventListener('DOMContentLoaded', () => {
             const loginScreen = document.getElementById('login-screen');
@@ -327,21 +342,37 @@
 
             const showLogin = () => {
                 sessionStorage.removeItem(SESSION_KEY);
+                sessionStorage.removeItem(PASSWORD_KEY);
                 loginScreen.style.display = 'flex';
                 adminContent.classList.remove('show');
                 passwordInput.value = '';
                 loginError.classList.remove('show');
             };
 
-            loginForm.addEventListener('submit', (e) => {
+            loginForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                if (passwordInput.value === ADMIN_PASSWORD) {
-                    sessionStorage.setItem(SESSION_KEY, 'authenticated');
-                    showAdmin();
-                } else {
+                const password = passwordInput.value;
+
+                try {
+                    const response = await fetch('/api/verify-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password })
+                    });
+
+                    if (response.ok) {
+                        sessionStorage.setItem(SESSION_KEY, 'authenticated');
+                        sessionStorage.setItem(PASSWORD_KEY, password);
+                        showAdmin();
+                    } else {
+                        loginError.classList.add('show');
+                        passwordInput.value = '';
+                        passwordInput.focus();
+                    }
+                } catch (error) {
+                    console.error('Login error:', error);
+                    loginError.textContent = 'Connection error. Please try again.';
                     loginError.classList.add('show');
-                    passwordInput.value = '';
-                    passwordInput.focus();
                 }
             });
 
@@ -354,7 +385,9 @@
                 const awardsInput = document.getElementById('awards-input');
                 const awardsList = document.getElementById('awards-list');
                 const taglineInput = document.getElementById('tagline');
+                const logoUrlInput = document.getElementById('logo-url');
                 const saveTaglineBtn = document.getElementById('save-tagline');
+                const saveLogoBtn = document.getElementById('save-logo');
                 const clearSettingsBtn = document.getElementById('clear-settings');
                 const toast = document.getElementById('toast');
                 const awardsCount = document.getElementById('awards-count');
@@ -375,15 +408,54 @@
                     startX: 0, startY: 0, imgWidth: 0, imgHeight: 0
                 };
 
-                const loadSettings = () => {
-                    const settings = localStorage.getItem('revent-signature-admin');
-                    return settings ? JSON.parse(settings) : { awards: [], companyTagline: '' };
+                // Cached settings
+                let cachedSettings = { awards: [], companyTagline: '', logoUrl: '' };
+
+                // Get stored admin password
+                const getAdminPassword = () => sessionStorage.getItem(PASSWORD_KEY) || '';
+
+                // Load settings from API
+                const loadSettings = async () => {
+                    try {
+                        const response = await fetch('/api/settings');
+                        if (response.ok) {
+                            cachedSettings = await response.json();
+                        }
+                    } catch (error) {
+                        console.error('Error loading settings:', error);
+                    }
+                    return cachedSettings;
                 };
 
-                const saveSettings = (settings) => {
-                    localStorage.setItem('revent-signature-admin', JSON.stringify(settings));
-                    updatePreview();
-                    showToast('Changes saved!');
+                // Get cached settings (synchronous)
+                const getSettings = () => cachedSettings;
+
+                // Save settings to API
+                const saveSettings = async (settings) => {
+                    try {
+                        const response = await fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                password: getAdminPassword(),
+                                awards: settings.awards,
+                                companyTagline: settings.companyTagline,
+                                logoUrl: settings.logoUrl
+                            })
+                        });
+
+                        if (response.ok) {
+                            cachedSettings = settings;
+                            updatePreview();
+                            showToast('Changes saved!');
+                        } else {
+                            const error = await response.json();
+                            showToast(error.error || 'Failed to save');
+                        }
+                    } catch (error) {
+                        console.error('Error saving settings:', error);
+                        showToast('Connection error. Please try again.');
+                    }
                 };
 
                 const showToast = (message) => {
@@ -393,14 +465,14 @@
                 };
 
                 const updatePreview = () => {
-                    const settings = loadSettings();
+                    const settings = getSettings();
                     awardsCount.textContent = settings.awards.length;
                     taglinePreview.textContent = settings.companyTagline || 'Not set';
                     renderAwards();
                 };
 
                 const renderAwards = () => {
-                    const settings = loadSettings();
+                    const settings = getSettings();
                     awardsList.innerHTML = settings.awards.map((award, index) => `
                         <div class="award-item">
                             <img src="${award}" alt="Award ${index + 1}">
@@ -409,11 +481,11 @@
                     `).join('');
 
                     awardsList.querySelectorAll('.award-remove').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
+                        btn.addEventListener('click', async (e) => {
                             const index = parseInt(e.target.dataset.index);
-                            const settings = loadSettings();
+                            const settings = getSettings();
                             settings.awards.splice(index, 1);
-                            saveSettings(settings);
+                            await saveSettings(settings);
                         });
                     });
                 };
@@ -507,7 +579,7 @@
                 }
 
                 // Save cropped award
-                cropSaveBtn.addEventListener('click', () => {
+                cropSaveBtn.addEventListener('click', async () => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     const outputSize = 150;
@@ -527,9 +599,9 @@
                     ctx.drawImage(cropImage, srcX, srcY, srcSize, srcSize, 0, 0, outputSize, outputSize);
 
                     const croppedData = canvas.toDataURL('image/png');
-                    const settings = loadSettings();
+                    const settings = getSettings();
                     settings.awards.push(croppedData);
-                    saveSettings(settings);
+                    await saveSettings(settings);
 
                     closeCropModal();
                 });
@@ -576,26 +648,40 @@
                 });
 
                 // Save tagline
-                saveTaglineBtn.addEventListener('click', () => {
-                    const settings = loadSettings();
+                saveTaglineBtn.addEventListener('click', async () => {
+                    const settings = getSettings();
                     settings.companyTagline = taglineInput.value;
-                    saveSettings(settings);
+                    await saveSettings(settings);
+                });
+
+                // Save logo URL
+                saveLogoBtn.addEventListener('click', async () => {
+                    const settings = getSettings();
+                    settings.logoUrl = logoUrlInput.value;
+                    await saveSettings(settings);
                 });
 
                 // Clear all settings
-                clearSettingsBtn.addEventListener('click', () => {
+                clearSettingsBtn.addEventListener('click', async () => {
                     if (confirm('Clear all global settings?')) {
-                        localStorage.removeItem('revent-signature-admin');
+                        await saveSettings({ awards: [], companyTagline: '', logoUrl: '' });
                         taglineInput.value = '';
+                        logoUrlInput.value = '';
                         updatePreview();
                         showToast('All settings cleared');
                     }
                 });
 
-                // Initial load
-                const settings = loadSettings();
-                taglineInput.value = settings.companyTagline || '';
-                updatePreview();
+                // Initial load (async)
+                const initializeSettings = async () => {
+                    await loadSettings();
+                    const settings = getSettings();
+                    taglineInput.value = settings.companyTagline || '';
+                    logoUrlInput.value = settings.logoUrl || '';
+                    updatePreview();
+                };
+
+                initializeSettings();
             }
         });
     </script>

@@ -1,3 +1,9 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+
 # Screenshots and temp files
 *.png
 *.jpg
