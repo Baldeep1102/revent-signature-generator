@@ -61,12 +61,17 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAdminSettings();
 
     // Show toast notification
-    const showToast = (message) => {
+    const showToast = (message, duration = 3000) => {
         toast.textContent = message;
         toast.classList.add('show');
         setTimeout(() => {
             toast.classList.remove('show');
-        }, 3000);
+        }, duration);
+    };
+
+    // Check if image URL is hosted (not base64)
+    const isHostedUrl = (url) => {
+        return url && !url.startsWith('data:');
     };
 
     // ==================== PHOTO CROPPING ====================
@@ -208,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Save cropped image
-    cropSaveBtn.addEventListener('click', () => {
+    cropSaveBtn.addEventListener('click', async () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const outputSize = 150; // Output size in pixels
@@ -243,8 +248,41 @@ document.addEventListener('DOMContentLoaded', () => {
             0, 0, outputSize, outputSize
         );
 
-        // Get data URL
-        profilePhotoData = canvas.toDataURL('image/png');
+        // Get base64 data
+        const base64Data = canvas.toDataURL('image/png');
+
+        // Show loading state
+        cropSaveBtn.disabled = true;
+        cropSaveBtn.textContent = 'Uploading...';
+
+        try {
+            // Upload to server and get public URL
+            const response = await fetch('/api/upload-photo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageData: base64Data })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                profilePhotoData = result.url; // Use the public URL
+
+                if (result.warning) {
+                    console.warn(result.warning);
+                }
+            } else {
+                // Fallback to base64 if upload fails
+                console.warn('Upload failed, using base64 fallback');
+                profilePhotoData = base64Data;
+            }
+        } catch (error) {
+            console.warn('Upload error, using base64 fallback:', error);
+            profilePhotoData = base64Data;
+        }
+
+        // Reset button state
+        cropSaveBtn.disabled = false;
+        cropSaveBtn.textContent = 'Save Photo';
 
         // Update preview
         photoPreview.innerHTML = `<img src="${profilePhotoData}" alt="Profile">`;
@@ -256,6 +294,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Update signature preview
         updatePreview();
+
+        // Show appropriate feedback
+        if (isHostedUrl(profilePhotoData)) {
+            showToast('Photo uploaded! It will display correctly in emails.', 4000);
+        } else {
+            showToast('Photo saved locally. Note: May not display in recipient emails.', 5000);
+        }
     });
 
     // Cancel/close crop modal
