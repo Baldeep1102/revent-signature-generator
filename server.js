@@ -2,8 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const cloudinary = require('cloudinary').v2;
 const path = require('path');
-const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,46 +15,34 @@ app.use(express.json({ limit: '10mb' })); // Increased limit for base64 images
 // Serve static files
 app.use(express.static(path.join(__dirname)));
 
-// Initialize Supabase client
+// Initialize Supabase client (for settings storage)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const adminPassword = process.env.ADMIN_PASSWORD || 'Revent123';
-
-// Storage bucket name
-const STORAGE_BUCKET = 'signature-images';
 
 let supabase = null;
 
 if (supabaseUrl && supabaseKey) {
     supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('Supabase client initialized');
-
-    // Initialize storage bucket (create if not exists)
-    (async () => {
-        try {
-            const { data: buckets } = await supabase.storage.listBuckets();
-            const bucketExists = buckets?.some(b => b.name === STORAGE_BUCKET);
-
-            if (!bucketExists) {
-                const { error } = await supabase.storage.createBucket(STORAGE_BUCKET, {
-                    public: true,
-                    fileSizeLimit: 1024 * 1024 // 1MB limit
-                });
-                if (error) {
-                    console.warn('Could not create storage bucket:', error.message);
-                    console.log('Please create a public bucket named "signature-images" in Supabase dashboard');
-                } else {
-                    console.log('Storage bucket created successfully');
-                }
-            } else {
-                console.log('Storage bucket exists');
-            }
-        } catch (err) {
-            console.warn('Storage bucket check failed:', err.message);
-        }
-    })();
+    console.log('Supabase client initialized (for settings)');
 } else {
-    console.warn('Warning: Supabase credentials not configured. Using in-memory storage.');
+    console.warn('Warning: Supabase credentials not configured. Using in-memory storage for settings.');
+}
+
+// Initialize Cloudinary (for image storage)
+const cloudinaryConfigured = process.env.CLOUDINARY_CLOUD_NAME &&
+                              process.env.CLOUDINARY_API_KEY &&
+                              process.env.CLOUDINARY_API_SECRET;
+
+if (cloudinaryConfigured) {
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET
+    });
+    console.log('Cloudinary configured for image storage');
+} else {
+    console.warn('Warning: Cloudinary credentials not configured. Image uploads will use base64 fallback.');
 }
 
 // In-memory fallback storage (for development without Supabase)
@@ -64,43 +52,34 @@ let inMemorySettings = {
     logoUrl: ''
 };
 
-// Helper: Upload base64 image to Supabase Storage
-async function uploadImageToStorage(base64Data, folder = 'photos') {
-    if (!supabase) {
-        throw new Error('Supabase not configured');
+// Helper: Upload base64 image to Cloudinary
+async function uploadImageToCloudinary(base64Data, folder = 'photos') {
+    if (!cloudinaryConfigured) {
+        throw new Error('Cloudinary not configured');
     }
 
-    // Extract the base64 content and mime type
-    const matches = base64Data.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
-    if (!matches) {
-        throw new Error('Invalid base64 image format');
+    // Cloudinary accepts base64 data URIs directly
+    const result = await cloudinary.uploader.upload(base64Data, {
+        folder: `signatures/${folder}`,
+        resource_type: 'image'
+    });
+
+    return result.secure_url;
+}
+
+// Helper: Delete image from Cloudinary
+async function deleteImageFromCloudinary(imageUrl) {
+    if (!cloudinaryConfigured || !imageUrl) {
+        return;
     }
 
-    const imageType = matches[1];
-    const base64Content = matches[2];
-    const buffer = Buffer.from(base64Content, 'base64');
-
-    // Generate unique filename
-    const filename = `${folder}/${crypto.randomUUID()}.${imageType === 'jpeg' ? 'jpg' : imageType}`;
-
-    // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(filename, buffer, {
-            contentType: `image/${imageType}`,
-            upsert: false
-        });
-
-    if (error) {
-        throw new Error(`Upload failed: ${error.message}`);
+    // Extract public_id from Cloudinary URL
+    // URL format: https://res.cloudinary.com/cloud_name/image/upload/v123/signatures/folder/public_id.ext
+    const matches = imageUrl.match(/\/signatures\/(.+)\.[a-z]+$/i);
+    if (matches) {
+        const publicId = `signatures/${matches[1]}`;
+        await cloudinary.uploader.destroy(publicId);
     }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-        .from(STORAGE_BUCKET)
-        .getPublicUrl(filename);
-
-    return urlData.publicUrl;
 }
 
 // GET /api/settings - Fetch current settings
@@ -242,12 +221,12 @@ app.post('/api/upload-photo', async (req, res) => {
             return res.status(400).json({ error: 'No image data provided' });
         }
 
-        if (!supabase) {
+        if (!cloudinaryConfigured) {
             // Fallback: return the base64 as-is (will work in preview but not in emails)
             return res.json({ url: imageData, warning: 'Using base64 fallback - images may not display in emails' });
         }
 
-        const publicUrl = await uploadImageToStorage(imageData, 'photos');
+        const publicUrl = await uploadImageToCloudinary(imageData, 'photos');
         res.json({ url: publicUrl });
     } catch (error) {
         console.error('Photo upload error:', error);
@@ -269,12 +248,12 @@ app.post('/api/upload-award', async (req, res) => {
             return res.status(400).json({ error: 'No image data provided' });
         }
 
-        if (!supabase) {
+        if (!cloudinaryConfigured) {
             // Fallback: return the base64 as-is
             return res.json({ url: imageData, warning: 'Using base64 fallback - images may not display in emails' });
         }
 
-        const publicUrl = await uploadImageToStorage(imageData, 'awards');
+        const publicUrl = await uploadImageToCloudinary(imageData, 'awards');
         res.json({ url: publicUrl });
     } catch (error) {
         console.error('Award upload error:', error);
@@ -292,17 +271,11 @@ app.delete('/api/delete-image', async (req, res) => {
             return res.status(401).json({ error: 'Invalid admin password' });
         }
 
-        if (!supabase || !imageUrl) {
+        if (!cloudinaryConfigured || !imageUrl) {
             return res.json({ success: true }); // Nothing to delete
         }
 
-        // Extract file path from URL
-        const urlParts = imageUrl.split(`/storage/v1/object/public/${STORAGE_BUCKET}/`);
-        if (urlParts.length === 2) {
-            const filePath = urlParts[1];
-            await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
-        }
-
+        await deleteImageFromCloudinary(imageUrl);
         res.json({ success: true });
     } catch (error) {
         console.error('Delete image error:', error);
@@ -313,36 +286,17 @@ app.delete('/api/delete-image', async (req, res) => {
 // GET /api/storage-status - Check if storage is properly configured
 app.get('/api/storage-status', async (req, res) => {
     try {
-        if (!supabase) {
+        if (!cloudinaryConfigured) {
             return res.json({
                 configured: false,
-                message: 'Supabase not configured. Images will use base64 (may not work in emails).'
-            });
-        }
-
-        // Check if bucket exists and is accessible
-        const { data: buckets, error } = await supabase.storage.listBuckets();
-
-        if (error) {
-            return res.json({
-                configured: false,
-                message: `Storage error: ${error.message}`
-            });
-        }
-
-        const bucket = buckets?.find(b => b.name === STORAGE_BUCKET);
-
-        if (!bucket) {
-            return res.json({
-                configured: false,
-                message: `Storage bucket "${STORAGE_BUCKET}" not found. Please create it in Supabase dashboard with public access enabled.`
+                message: 'Cloudinary not configured. Images will use base64 (may not work in emails).'
             });
         }
 
         return res.json({
             configured: true,
-            message: 'Storage configured correctly. Images will be hosted with public URLs.',
-            bucketName: STORAGE_BUCKET
+            message: 'Cloudinary configured. Images will be hosted with permanent public URLs.',
+            provider: 'Cloudinary'
         });
     } catch (error) {
         res.json({
@@ -367,6 +321,9 @@ app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(`Admin panel: http://localhost:${PORT}/admin.html`);
     if (!supabase) {
-        console.log('Note: Running with in-memory storage. Configure SUPABASE_URL and SUPABASE_ANON_KEY for persistence.');
+        console.log('Note: Supabase not configured. Settings will use in-memory storage.');
+    }
+    if (!cloudinaryConfigured) {
+        console.log('Note: Cloudinary not configured. Images will use base64 fallback.');
     }
 });
