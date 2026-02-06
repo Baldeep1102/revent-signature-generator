@@ -602,6 +602,90 @@ footer {
     border: none;
 }
 
+/* Setup Guide */
+.setup-guide {
+    margin-top: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.setup-guide summary {
+    padding: 1rem 1.25rem;
+    background: var(--bg-color);
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9375rem;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.setup-guide summary::-webkit-details-marker {
+    display: none;
+}
+
+.setup-guide summary::after {
+    content: '+';
+    margin-left: auto;
+    font-size: 1.25rem;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+}
+
+.setup-guide[open] summary::after {
+    content: '−';
+}
+
+.setup-guide summary:hover {
+    background: #f1f5f9;
+}
+
+.guide-content {
+    padding: 1.25rem;
+    background: white;
+    border-top: 1px solid var(--border-color);
+}
+
+.guide-content ol {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.guide-content li {
+    margin-bottom: 1rem;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+}
+
+.guide-content li:last-child {
+    margin-bottom: 0;
+}
+
+.guide-content strong {
+    color: var(--text-primary);
+}
+
+.guide-content a {
+    color: #5986d8;
+    text-decoration: none;
+}
+
+.guide-content a:hover {
+    text-decoration: underline;
+}
+
+.guide-done {
+    margin-top: 1.25rem;
+    padding: 0.75rem 1rem;
+    background: #f0fdf4;
+    border-radius: 6px;
+    color: #166534;
+    font-weight: 500;
+    font-size: 0.9375rem;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
     .container {
