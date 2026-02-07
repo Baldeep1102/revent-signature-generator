@@ -295,18 +295,18 @@
 
             <!-- Setup Instructions -->
             <section class="admin-card">
-                <h2>Supabase Storage Setup</h2>
+                <h2>Image Hosting (Cloudinary)</h2>
                 <div style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;">
-                    <p>For images to display in email recipients' inboxes, you need Supabase Storage configured:</p>
-                    <ol style="margin:1rem 0;padding-left:1.5rem;">
-                        <li>Go to your <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--primary-color);">Supabase Dashboard</a></li>
-                        <li>Navigate to <strong>Storage</strong> in the sidebar</li>
-                        <li>Click <strong>New Bucket</strong></li>
-                        <li>Name it: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">signature-images</code></li>
-                        <li>Enable <strong>Public bucket</strong> toggle</li>
-                        <li>Click <strong>Create bucket</strong></li>
-                    </ol>
-                    <p>Once configured, uploaded images will have public URLs that work in all email clients.</p>
+                    <p>Profile photos and award images are hosted on <strong>Cloudinary</strong> for permanent, reliable URLs that work in all email clients.</p>
+                    <br>
+                    <p><strong>Required environment variables:</strong></p>
+                    <ul style="margin:0.5rem 0;padding-left:1.5rem;">
+                        <li><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">CLOUDINARY_CLOUD_NAME</code></li>
+                        <li><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">CLOUDINARY_API_KEY</code></li>
+                        <li><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">CLOUDINARY_API_SECRET</code></li>
+                    </ul>
+                    <br>
+                    <p>If you see broken award images, delete them and re-upload through this admin panel. Old images may have been stored on a previous provider.</p>
                 </div>
             </section>
         </main>
@@ -785,7 +785,7 @@
                             statusEl.style.background = '#fef3c7';
                             statusEl.style.color = '#92400e';
                             statusEl.innerHTML = `<strong>⚠ Image Hosting Issue:</strong> ${status.message}<br><br>
-                                <strong>To fix:</strong> Go to your <a href="https://supabase.com/dashboard" target="_blank" style="color:#92400e;">Supabase Dashboard</a> → Storage → Create bucket named "signature-images" → Enable public access.`;
+                                <strong>To fix:</strong> Ensure Cloudinary environment variables (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET) are configured in your deployment settings.`;
                         }
                         statusEl.style.display = 'block';
                     } catch (error) {
