@@ -264,7 +264,5 @@ app.listen(PORT, () => {
     if (!supabase) {
         console.log('Note: Supabase not configured. Settings will use in-memory storage.');
     }
-    if (!cloudinaryConfigured) {
-        console.log('Note: Cloudinary not configured. Images will use base64 fallback.');
-    }
+    console.log('Note: Using local VPS file storage for images.');
 });
