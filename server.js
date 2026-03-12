@@ -2,17 +2,26 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
-const cloudinary = require('cloudinary').v2;
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BASE_URL = process.env.BASE_URL || 'https://ailab.revent.store/signature-generator';
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+['photos', 'awards'].forEach(f => {
+    const d = path.join(uploadsDir, f);
+    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+});
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '10mb' })); // Increased limit for base64 images
+app.use(express.json({ limit: '10mb' }));
 
-// Serve static files
+// Serve static files (including uploads/)
 app.use(express.static(path.join(__dirname)));
 
 // Initialize Supabase client (for settings storage)
@@ -29,22 +38,6 @@ if (supabaseUrl && supabaseKey) {
     console.warn('Warning: Supabase credentials not configured. Using in-memory storage for settings.');
 }
 
-// Initialize Cloudinary (for image storage)
-const cloudinaryConfigured = process.env.CLOUDINARY_CLOUD_NAME &&
-                              process.env.CLOUDINARY_API_KEY &&
-                              process.env.CLOUDINARY_API_SECRET;
-
-if (cloudinaryConfigured) {
-    cloudinary.config({
-        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-        api_key: process.env.CLOUDINARY_API_KEY,
-        api_secret: process.env.CLOUDINARY_API_SECRET
-    });
-    console.log('Cloudinary configured for image storage');
-} else {
-    console.warn('Warning: Cloudinary credentials not configured. Image uploads will use base64 fallback.');
-}
-
 // In-memory fallback storage (for development without Supabase)
 let inMemorySettings = {
     awards: [],
@@ -52,33 +45,26 @@ let inMemorySettings = {
     logoUrl: ''
 };
 
-// Helper: Upload base64 image to Cloudinary
-async function uploadImageToCloudinary(base64Data, folder = 'photos') {
-    if (!cloudinaryConfigured) {
-        throw new Error('Cloudinary not configured');
-    }
-
-    // Cloudinary accepts base64 data URIs directly
-    const result = await cloudinary.uploader.upload(base64Data, {
-        folder: `signatures/${folder}`,
-        resource_type: 'image'
-    });
-
-    return result.secure_url;
+// Helper: Save base64 image to local disk, return public URL
+async function saveImageLocally(base64Data, folder = 'photos') {
+    const match = base64Data.match(/^data:image\/(\w+);base64,/);
+    const ext = match ? match[1] : 'jpg';
+    const filename = `${Date.now()}_${Math.random().toString(36).substr(2, 8)}.${ext}`;
+    const filePath = path.join(uploadsDir, folder, filename);
+    const base64Content = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    fs.writeFileSync(filePath, Buffer.from(base64Content, 'base64'));
+    return `${BASE_URL}/uploads/${folder}/${filename}`;
 }
 
-// Helper: Delete image from Cloudinary
-async function deleteImageFromCloudinary(imageUrl) {
-    if (!cloudinaryConfigured || !imageUrl) {
-        return;
-    }
-
-    // Extract public_id from Cloudinary URL
-    // URL format: https://res.cloudinary.com/cloud_name/image/upload/v123/signatures/folder/public_id.ext
-    const matches = imageUrl.match(/\/signatures\/(.+)\.[a-z]+$/i);
-    if (matches) {
-        const publicId = `signatures/${matches[1]}`;
-        await cloudinary.uploader.destroy(publicId);
+// Helper: Delete locally stored image
+async function deleteImageLocally(imageUrl) {
+    if (!imageUrl || imageUrl.startsWith('data:')) return;
+    try {
+        const urlPath = imageUrl.replace(`${BASE_URL}/`, '');
+        const filePath = path.join(__dirname, urlPath);
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) {
+        console.warn('Could not delete image:', e.message);
     }
 }
 
@@ -216,17 +202,8 @@ app.post('/api/verify-password', (req, res) => {
 app.post('/api/upload-photo', async (req, res) => {
     try {
         const { imageData } = req.body;
-
-        if (!imageData) {
-            return res.status(400).json({ error: 'No image data provided' });
-        }
-
-        if (!cloudinaryConfigured) {
-            // Fallback: return the base64 as-is (will work in preview but not in emails)
-            return res.json({ url: imageData, warning: 'Using base64 fallback - images may not display in emails' });
-        }
-
-        const publicUrl = await uploadImageToCloudinary(imageData, 'photos');
+        if (!imageData) return res.status(400).json({ error: 'No image data provided' });
+        const publicUrl = await saveImageLocally(imageData, 'photos');
         res.json({ url: publicUrl });
     } catch (error) {
         console.error('Photo upload error:', error);
@@ -238,22 +215,9 @@ app.post('/api/upload-photo', async (req, res) => {
 app.post('/api/upload-award', async (req, res) => {
     try {
         const { password, imageData } = req.body;
-
-        // Verify admin password
-        if (password !== adminPassword) {
-            return res.status(401).json({ error: 'Invalid admin password' });
-        }
-
-        if (!imageData) {
-            return res.status(400).json({ error: 'No image data provided' });
-        }
-
-        if (!cloudinaryConfigured) {
-            // Fallback: return the base64 as-is
-            return res.json({ url: imageData, warning: 'Using base64 fallback - images may not display in emails' });
-        }
-
-        const publicUrl = await uploadImageToCloudinary(imageData, 'awards');
+        if (password !== adminPassword) return res.status(401).json({ error: 'Invalid admin password' });
+        if (!imageData) return res.status(400).json({ error: 'No image data provided' });
+        const publicUrl = await saveImageLocally(imageData, 'awards');
         res.json({ url: publicUrl });
     } catch (error) {
         console.error('Award upload error:', error);
@@ -265,17 +229,8 @@ app.post('/api/upload-award', async (req, res) => {
 app.delete('/api/delete-image', async (req, res) => {
     try {
         const { password, imageUrl } = req.body;
-
-        // Verify admin password
-        if (password !== adminPassword) {
-            return res.status(401).json({ error: 'Invalid admin password' });
-        }
-
-        if (!cloudinaryConfigured || !imageUrl) {
-            return res.json({ success: true }); // Nothing to delete
-        }
-
-        await deleteImageFromCloudinary(imageUrl);
+        if (password !== adminPassword) return res.status(401).json({ error: 'Invalid admin password' });
+        await deleteImageLocally(imageUrl);
         res.json({ success: true });
     } catch (error) {
         console.error('Delete image error:', error);
@@ -284,26 +239,12 @@ app.delete('/api/delete-image', async (req, res) => {
 });
 
 // GET /api/storage-status - Check if storage is properly configured
-app.get('/api/storage-status', async (req, res) => {
-    try {
-        if (!cloudinaryConfigured) {
-            return res.json({
-                configured: false,
-                message: 'Cloudinary not configured. Images will use base64 (may not work in emails).'
-            });
-        }
-
-        return res.json({
-            configured: true,
-            message: 'Cloudinary configured. Images will be hosted with permanent public URLs.',
-            provider: 'Cloudinary'
-        });
-    } catch (error) {
-        res.json({
-            configured: false,
-            message: `Storage check failed: ${error.message}`
-        });
-    }
+app.get('/api/storage-status', (req, res) => {
+    res.json({
+        configured: true,
+        message: 'Local VPS storage active. Images served from this server with permanent public URLs.',
+        provider: 'Local'
+    });
 });
 
 // Serve index.html for root path
