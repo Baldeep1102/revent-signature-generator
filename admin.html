@@ -234,19 +234,27 @@
                 <div class="awards-list" id="awards-list"></div>
             </section>
 
-            <!-- Logo URL Section -->
+            <!-- Logo Section -->
             <section class="admin-card">
                 <h2>Company Logo</h2>
                 <p style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;">
-                    Enter a URL to your hosted logo image (PNG recommended). Leave empty for text fallback.
+                    Upload your company logo (PNG recommended, white background for dark mode compatibility).
                 </p>
 
-                <div class="form-group">
-                    <label for="logo-url">Logo URL</label>
-                    <input type="url" id="logo-url" placeholder="https://example.com/logo.png">
+                <div class="upload-area" id="logo-upload">
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M12 15V3m0 0l-4 4m4-4l4 4"/>
+                        <path d="M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17"/>
+                    </svg>
+                    <p class="upload-text"><span>Click to upload</span> or drag and drop</p>
+                    <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.5rem;">PNG, JPG (max 500KB)</p>
+                    <input type="file" id="logo-input" accept="image/*" hidden>
                 </div>
 
-                <button class="btn btn-primary" id="save-logo" style="margin-top:1rem;">Save Logo URL</button>
+                <div id="logo-preview" style="margin-top:1rem;display:none;">
+                    <img id="logo-preview-img" style="max-height:60px;border:1px solid var(--border-color);border-radius:8px;padding:6px;" />
+                    <button class="btn btn-secondary" id="remove-logo" style="margin-top:0.5rem;display:block;">Remove Logo</button>
+                </div>
             </section>
 
             <!-- Company Tagline Section -->
@@ -293,20 +301,13 @@
                 </div>
             </section>
 
-            <!-- Setup Instructions -->
+            <!-- Storage Info -->
             <section class="admin-card">
-                <h2>Image Hosting (Cloudinary)</h2>
+                <h2>Image Hosting</h2>
                 <div style="color:var(--text-secondary);font-size:0.875rem;line-height:1.6;">
-                    <p>Profile photos and award images are hosted on <strong>Cloudinary</strong> for permanent, reliable URLs that work in all email clients.</p>
+                    <p>All images (profile photos, award seals, logo) are stored directly on the <strong>Revent VPS</strong> and served as permanent public URLs via <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">ailab.revent.store</code>.</p>
                     <br>
-                    <p><strong>Required environment variables:</strong></p>
-                    <ul style="margin:0.5rem 0;padding-left:1.5rem;">
-                        <li><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">CLOUDINARY_CLOUD_NAME</code></li>
-                        <li><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">CLOUDINARY_API_KEY</code></li>
-                        <li><code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">CLOUDINARY_API_SECRET</code></li>
-                    </ul>
-                    <br>
-                    <p>If you see broken award images, delete them and re-upload through this admin panel. Old images may have been stored on a previous provider.</p>
+                    <p>These URLs work reliably in all email clients. No third-party service required.</p>
                 </div>
             </section>
         </main>
@@ -408,9 +409,12 @@
                 const awardsInput = document.getElementById('awards-input');
                 const awardsList = document.getElementById('awards-list');
                 const taglineInput = document.getElementById('tagline');
-                const logoUrlInput = document.getElementById('logo-url');
+                const logoUpload = document.getElementById('logo-upload');
+                const logoInput = document.getElementById('logo-input');
+                const logoPreview = document.getElementById('logo-preview');
+                const logoPreviewImg = document.getElementById('logo-preview-img');
+                const removeLogoBtn = document.getElementById('remove-logo');
                 const saveTaglineBtn = document.getElementById('save-tagline');
-                const saveLogoBtn = document.getElementById('save-logo');
                 const clearSettingsBtn = document.getElementById('clear-settings');
                 const toast = document.getElementById('toast');
                 const awardsCount = document.getElementById('awards-count');
@@ -732,13 +736,6 @@
                     await saveSettings(settings);
                 });
 
-                // Save logo URL
-                saveLogoBtn.addEventListener('click', async () => {
-                    const settings = getSettings();
-                    settings.logoUrl = logoUrlInput.value;
-                    await saveSettings(settings);
-                });
-
                 // Clear all settings
                 clearSettingsBtn.addEventListener('click', async () => {
                     if (confirm('Clear all global settings? This will delete all uploaded award images.')) {
@@ -764,7 +761,8 @@
 
                         await saveSettings({ awards: [], companyTagline: '', logoUrl: '' });
                         taglineInput.value = '';
-                        logoUrlInput.value = '';
+                        showLogoPreview('');
+                        logoInput.value = '';
                         updatePreview();
                         showToast('All settings cleared');
                     }
@@ -797,11 +795,75 @@
                 };
 
                 // Initial load (async)
+                // Logo upload
+                const showLogoPreview = (url) => {
+                    if (url) {
+                        logoPreviewImg.src = url;
+                        logoPreview.style.display = 'block';
+                        logoUpload.style.display = 'none';
+                    } else {
+                        logoPreview.style.display = 'none';
+                        logoUpload.style.display = '';
+                    }
+                };
+
+                logoUpload.addEventListener('click', () => logoInput.click());
+                logoUpload.addEventListener('dragover', (e) => { e.preventDefault(); logoUpload.classList.add('dragover'); });
+                logoUpload.addEventListener('dragleave', () => logoUpload.classList.remove('dragover'));
+                logoUpload.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    logoUpload.classList.remove('dragover');
+                    if (e.dataTransfer.files[0]) handleLogoFile(e.dataTransfer.files[0]);
+                });
+                logoInput.addEventListener('change', (e) => { if (e.target.files[0]) handleLogoFile(e.target.files[0]); });
+
+                const handleLogoFile = (file) => {
+                    if (file.size > 500 * 1024) { showToast('File too large (max 500KB)'); return; }
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const response = await fetch('api/upload-logo', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ password: getAdminPassword(), imageData: e.target.result })
+                            });
+                            if (!response.ok) { showToast('Logo upload failed'); return; }
+                            const { url } = await response.json();
+                            const settings = getSettings();
+                            if (settings.logoUrl) deleteImageLocally(settings.logoUrl);
+                            settings.logoUrl = url;
+                            await saveSettings(settings);
+                            showLogoPreview(url);
+                        } catch (err) { showToast('Upload failed'); }
+                    };
+                    reader.readAsDataURL(file);
+                };
+
+                const deleteImageLocally = async (imageUrl) => {
+                    if (!imageUrl || imageUrl.startsWith('data:')) return;
+                    try {
+                        await fetch('api/delete-image', {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ password: getAdminPassword(), imageUrl })
+                        });
+                    } catch (e) {}
+                };
+
+                removeLogoBtn.addEventListener('click', async () => {
+                    const settings = getSettings();
+                    if (settings.logoUrl) await deleteImageLocally(settings.logoUrl);
+                    settings.logoUrl = '';
+                    await saveSettings(settings);
+                    showLogoPreview('');
+                    logoInput.value = '';
+                });
+
                 const initializeSettings = async () => {
                     await loadSettings();
                     const settings = getSettings();
                     taglineInput.value = settings.companyTagline || '';
-                    logoUrlInput.value = settings.logoUrl || '';
+                    showLogoPreview(settings.logoUrl || '');
                     updatePreview();
                     await checkStorageStatus();
                 };
