@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load admin settings from API
     const loadAdminSettings = async () => {
         try {
-            const response = await fetch('/api/settings');
+            const response = await fetch('api/settings');
             if (response.ok) {
                 adminSettings = await response.json();
             }
@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Upload to server and get public URL
-            const response = await fetch('/api/upload-photo', {
+            const response = await fetch('api/upload-photo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ imageData: base64Data })

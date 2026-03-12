@@ -377,7 +377,7 @@
                 const password = passwordInput.value;
 
                 try {
-                    const response = await fetch('/api/verify-password', {
+                    const response = await fetch('api/verify-password', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ password })
@@ -440,7 +440,7 @@
                 // Load settings from API
                 const loadSettings = async () => {
                     try {
-                        const response = await fetch('/api/settings');
+                        const response = await fetch('api/settings');
                         if (response.ok) {
                             cachedSettings = await response.json();
                         }
@@ -456,7 +456,7 @@
                 // Save settings to API
                 const saveSettings = async (settings) => {
                     try {
-                        const response = await fetch('/api/settings', {
+                        const response = await fetch('api/settings', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -512,7 +512,7 @@
                             // Delete image from storage if it's a hosted URL (not base64)
                             if (imageUrl && !imageUrl.startsWith('data:')) {
                                 try {
-                                    await fetch('/api/delete-image', {
+                                    await fetch('api/delete-image', {
                                         method: 'DELETE',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({
@@ -647,7 +647,7 @@
 
                     try {
                         // Upload to server and get public URL
-                        const response = await fetch('/api/upload-award', {
+                        const response = await fetch('api/upload-award', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -748,7 +748,7 @@
                         for (const imageUrl of settings.awards) {
                             if (imageUrl && !imageUrl.startsWith('data:')) {
                                 try {
-                                    await fetch('/api/delete-image', {
+                                    await fetch('api/delete-image', {
                                         method: 'DELETE',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({
@@ -774,7 +774,7 @@
                 const checkStorageStatus = async () => {
                     const statusEl = document.getElementById('storage-status');
                     try {
-                        const response = await fetch('/api/storage-status');
+                        const response = await fetch('api/storage-status');
                         const status = await response.json();
 
                         if (status.configured) {
